@@ -1,0 +1,492 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Schnorr Protocol</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap">
+<style>
+  /* Layout: home screen with two role boxes. A role opens a terminal on the left and a modular-arithmetic calculator on the right (stacked on phones). The run ends in a verdict banner. */
+  :root {
+    --bg: #000000;
+    --panel: #03140a;
+    --fg: #2bff6b;
+    --dim: #14a345;
+    --faint: #0a4a20;
+    --ok: #3aa0ff;
+    --bad: #ff3b3b;
+    --font: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    color-scheme: dark;
+  }
+  html, body { height: 100%; }
+  body {
+    background: var(--bg);
+    color: var(--fg);
+    font-family: var(--font);
+    font-size: 15px;
+    line-height: 1.6;
+    padding-block: 28px;
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+    text-shadow: 0 0 6px rgba(43, 255, 107, 0.4);
+  }
+  body::after {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 5;
+    background: repeating-linear-gradient(to bottom, rgba(0,0,0,0) 0 2px, rgba(0,0,0,0.26) 3px);
+  }
+  .wrap { max-width: 1080px; margin: 0 auto; }
+  [hidden] { display: none !important; }
+  button, input { font: inherit; }
+
+  .boot { color: var(--dim); margin: 0 0 8px; }
+  h1 {
+    font-size: clamp(1.9rem, 8vw, 3.2rem);
+    line-height: 1.05;
+    letter-spacing: 0.04em;
+    margin: 0 0 14px;
+    font-weight: 700;
+    text-wrap: balance;
+    animation: flicker 6s infinite;
+  }
+  h1::after { content: "_"; animation: blink 1s steps(1) infinite; }
+  .sub { color: var(--dim); margin: 0 0 30px; max-width: 58ch; }
+
+  .roles { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 16px; max-width: 760px; }
+  .role {
+    color: var(--fg);
+    text-shadow: inherit;
+    text-align: left;
+    background: var(--panel);
+    border: 1px solid var(--dim);
+    padding: 22px 20px;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-width: 0;
+    transition: background 0.12s, color 0.12s, box-shadow 0.12s;
+  }
+  .role .tag { color: var(--dim); }
+  .role b { font-size: 1.35rem; letter-spacing: 0.08em; }
+  .role span:last-child { color: var(--dim); }
+  .role:hover, .role:focus-visible {
+    background: var(--fg);
+    color: #001a08;
+    text-shadow: none;
+    box-shadow: 0 0 22px rgba(43, 255, 107, 0.5);
+    outline: none;
+  }
+  .role:hover .tag, .role:hover span:last-child,
+  .role:focus-visible .tag, .role:focus-visible span:last-child { color: #00501f; }
+  .warn-note { margin-top: 34px; color: var(--faint); text-shadow: none; font-size: 13px; }
+
+  .termgrid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 18px; align-items: start; }
+  @media (min-width: 900px) { .termgrid { grid-template-columns: minmax(0, 1fr) 320px; } }
+
+  .termbar {
+    display: flex; justify-content: space-between; gap: 12px; align-items: center;
+    border: 1px solid var(--dim); border-bottom: 0;
+    padding: 8px 14px; background: var(--panel); color: var(--dim);
+    font-size: 13px;
+  }
+  .termbar button { color: var(--dim); background: none; border: 0; cursor: pointer; padding: 2px 4px; text-shadow: none; }
+  .termbar button:hover, .termbar button:focus-visible { color: var(--fg); outline: 1px solid var(--dim); }
+  .screen {
+    border: 1px solid var(--dim);
+    padding: 16px 14px;
+    min-height: 360px;
+    max-height: 66vh;
+    overflow-y: auto;
+    overflow-x: hidden;
+  }
+  .ln { white-space: pre-wrap; overflow-wrap: anywhere; min-width: 0; }
+  .ln.cmd { color: #b6ffcc; }
+  .ln.dim { color: var(--dim); }
+  .ln.ok { color: var(--fg); }
+  .ln.hit { color: #fff; }
+  .ln.warn { color: #ffd23b; text-shadow: 0 0 6px rgba(255,210,59,0.4); }
+  .ask { display: flex; gap: 8px; align-items: baseline; }
+  .ask label { color: #b6ffcc; white-space: pre; }
+  .ask input {
+    flex: 1; min-width: 0;
+    color: var(--fg); text-shadow: inherit;
+    background: transparent; border: 0; border-bottom: 1px dashed var(--dim);
+    outline: none; caret-color: var(--fg); padding: 0 2px;
+  }
+  .ask input:focus { border-bottom-color: var(--fg); }
+
+  .result { margin-top: 22px; display: flex; flex-direction: column; align-items: flex-start; gap: 18px; }
+  .verdict {
+    font-size: clamp(2.1rem, 10vw, 4rem);
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    padding: 6px 20px;
+    border: 3px solid currentColor;
+    animation: pop 0.35s ease-out;
+  }
+  .verdict.ok { color: var(--ok); text-shadow: 0 0 18px rgba(58,160,255,0.7); box-shadow: 0 0 26px rgba(58,160,255,0.35); }
+  .verdict.bad { color: var(--bad); text-shadow: 0 0 18px rgba(255,59,59,0.7); box-shadow: 0 0 26px rgba(255,59,59,0.35); }
+  .again {
+    font-weight: 700; letter-spacing: 0.08em;
+    color: var(--fg); text-shadow: inherit; background: transparent;
+    border: 1px solid var(--fg); padding: 12px 22px; cursor: pointer;
+  }
+  .again:hover, .again:focus-visible { background: var(--fg); color: #001a08; text-shadow: none; outline: none; }
+
+  /* calculator */
+  .calc { border: 1px solid var(--dim); background: var(--panel); padding: 14px; min-width: 0; }
+  .calc-h { color: var(--dim); margin-bottom: 10px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+  .chip {
+    color: var(--fg); background: transparent; border: 1px solid var(--faint);
+    padding: 2px 8px; cursor: pointer; font-size: 13px; text-shadow: none;
+  }
+  .chip:hover, .chip:focus-visible { border-color: var(--fg); outline: none; }
+  .tabs { display: flex; gap: 6px; margin-bottom: 12px; flex-wrap: wrap; }
+  .tab {
+    color: var(--dim); background: transparent; border: 1px solid var(--faint);
+    padding: 4px 10px; cursor: pointer; font-size: 13px; text-shadow: none;
+  }
+  .tab[aria-selected="true"] { color: #001a08; background: var(--fg); border-color: var(--fg); }
+  .tab:focus-visible { outline: 1px solid var(--fg); }
+  .cform { display: grid; grid-template-columns: 2.2rem minmax(0, 1fr); gap: 8px 10px; align-items: center; }
+  .cform label { color: var(--dim); }
+  .cform input {
+    min-width: 0; color: var(--fg); background: #000; text-shadow: inherit;
+    border: 1px solid var(--faint); padding: 5px 8px; outline: none;
+  }
+  .cform input:focus { border-color: var(--fg); }
+  .run {
+    grid-column: 1 / -1; justify-self: start;
+    font-weight: 700; color: var(--fg); background: transparent; text-shadow: inherit;
+    border: 1px solid var(--fg); padding: 6px 14px; cursor: pointer; margin-top: 4px;
+  }
+  .run:hover, .run:focus-visible { background: var(--fg); color: #001a08; text-shadow: none; outline: none; }
+  .out { margin-top: 14px; border-top: 1px dashed var(--faint); padding-top: 12px; min-width: 0; }
+  .out-expr { color: var(--dim); font-size: 13px; overflow-wrap: anywhere; }
+  .out-main { font-size: 1.6rem; font-weight: 700; overflow-wrap: anywhere; }
+  .out-main.err { font-size: 14px; font-weight: 400; color: #ffd23b; }
+  .send {
+    margin-top: 8px; color: var(--fg); background: transparent; text-shadow: none;
+    border: 1px solid var(--dim); padding: 4px 10px; cursor: pointer; font-size: 13px;
+  }
+  .send:hover, .send:focus-visible { border-color: var(--fg); outline: none; }
+  .trace {
+    margin: 10px 0 0; padding: 0; max-height: 150px; overflow: auto;
+    color: var(--dim); font-size: 12px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; text-shadow: none;
+  }
+
+  @keyframes blink { 50% { opacity: 0; } }
+  @keyframes flicker { 0%, 96%, 100% { opacity: 1; } 97% { opacity: 0.75; } 98% { opacity: 1; } 99% { opacity: 0.8; } }
+  @keyframes pop { from { transform: scale(0.9); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+  @media (prefers-reduced-motion: reduce) {
+    h1, h1::after, .verdict { animation: none; }
+  }
+</style>
+
+<main class="wrap">
+  <section id="home">
+    <p class="boot">// zero-knowledge proof of knowledge</p>
+    <h1>SCHNORR PROTOCOL</h1>
+    <p class="sub">Prove you know a secret x without ever showing it. Toy group: p = 7673, g = 1003.</p>
+    <div class="roles">
+      <button class="role" id="pickVerifier" type="button">
+        <span class="tag">[ 1 ]</span>
+        <b>VERIFIER</b>
+        <span>Pick the challenge, then check the prover's answer yourself by hand.</span>
+      </button>
+      <button class="role" id="pickProver" type="button">
+        <span class="tag">[ 2 ]</span>
+        <b>PROVER</b>
+        <span>You hold the secret. Build and send the commitment and response yourself.</span>
+      </button>
+    </div>
+    <p class="warn-note">toy parameters. not secure. that is the point.</p>
+  </section>
+
+  <section id="term" hidden>
+    <div class="termgrid">
+      <div class="main">
+        <div class="termbar"><span id="roleName">schnorr@zkp:~$</span><button id="abort" type="button">[ esc ]</button></div>
+        <div class="screen" id="screen" role="log" aria-live="polite"></div>
+        <div class="result" id="result" hidden>
+          <div class="verdict" id="verdict"></div>
+          <button class="again" id="again" type="button">[ PLAY AGAIN ]</button>
+        </div>
+      </div>
+
+      <aside class="calc" aria-label="Modular arithmetic calculator">
+        <div class="calc-h">// CALC  (exact, any size)</div>
+        <div class="chips" id="chips"></div>
+        <div class="tabs" role="tablist">
+          <button class="tab" id="tabExp" role="tab" aria-selected="true" type="button">a^e mod m</button>
+          <button class="tab" id="tabLin" role="tab" aria-selected="false" type="button">a + b&times;c mod m</button>
+        </div>
+        <form class="cform" id="formExp" autocomplete="off">
+          <label for="ea">a</label><input id="ea" inputmode="numeric" placeholder="base, e.g. 1003">
+          <label for="ee">e</label><input id="ee" inputmode="numeric" placeholder="exponent">
+          <label for="em">m</label><input id="em" inputmode="numeric" value="7673">
+          <button class="run" type="submit">[ RUN ]</button>
+        </form>
+        <form class="cform" id="formLin" autocomplete="off" hidden>
+          <label for="la">a</label><input id="la" inputmode="numeric" placeholder="use 0 for a plain product">
+          <label for="lb">b</label><input id="lb" inputmode="numeric">
+          <label for="lc">c</label><input id="lc" inputmode="numeric">
+          <label for="lm">m</label><input id="lm" inputmode="numeric" value="7672">
+          <button class="run" type="submit">[ RUN ]</button>
+        </form>
+        <div class="out">
+          <div class="out-expr" id="outExpr">result appears here</div>
+          <div class="out-main" id="outMain">&nbsp;</div>
+          <button class="send" id="sendBtn" type="button" hidden>[ send to terminal ]</button>
+          <pre class="trace" id="trace"></pre>
+        </div>
+      </aside>
+    </div>
+  </section>
+</main>
+
+<script>
+(function () {
+  var P = 7673, G = 1003, N = P - 1, SECRET = 4;
+  var reduceMotion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  function modpow(b, e, m) {
+    var r = 1; b %= m;
+    while (e > 0) { if (e & 1) r = (r * b) % m; b = (b * b) % m; e = Math.floor(e / 2); }
+    return r;
+  }
+  function rand(lo, hi) {
+    var a = new Uint32Array(1); crypto.getRandomValues(a);
+    return lo + (a[0] % (hi - lo + 1));
+  }
+  var X = modpow(G, SECRET, P);
+
+  var home = document.getElementById("home"), term = document.getElementById("term");
+  var screen = document.getElementById("screen"), result = document.getElementById("result");
+  var verdict = document.getElementById("verdict"), roleName = document.getElementById("roleName");
+  var againBtn = document.getElementById("again"), abortBtn = document.getElementById("abort");
+  var runId = 0, fast = false, askCount = 0, activeInput = null;
+
+  var sleep = function (ms) { return new Promise(function (r) { setTimeout(r, fast || reduceMotion ? 0 : ms); }); };
+  function guard(id) { if (id !== runId) throw new Error("aborted"); }
+
+  async function line(id, text, cls) {
+    guard(id);
+    var d = document.createElement("div");
+    d.className = "ln " + (cls || "ok");
+    screen.appendChild(d);
+    if (fast || reduceMotion) { d.textContent = text; }
+    else {
+      for (var i = 0; i < text.length; i++) {
+        d.textContent += text[i];
+        if (i % 3 === 0) { screen.scrollTop = screen.scrollHeight; await sleep(8); guard(id); }
+      }
+    }
+    screen.scrollTop = screen.scrollHeight;
+    await sleep(170);
+  }
+
+  function ask(id, prompt) {
+    guard(id);
+    return new Promise(function (resolve) {
+      var wrap = document.createElement("div"); wrap.className = "ask";
+      var inp = document.createElement("input");
+      inp.id = "cli-" + (++askCount);
+      inp.type = "text"; inp.autocomplete = "off"; inp.spellcheck = false;
+      inp.setAttribute("autocapitalize", "off"); inp.setAttribute("inputmode", "numeric");
+      var lab = document.createElement("label"); lab.textContent = prompt; lab.htmlFor = inp.id;
+      wrap.appendChild(lab); wrap.appendChild(inp); screen.appendChild(wrap);
+      screen.scrollTop = screen.scrollHeight; inp.focus();
+      activeInput = inp; syncSend();
+      inp.addEventListener("keydown", function (e) {
+        if (e.key !== "Enter") return;
+        var v = inp.value.trim();
+        var echo = document.createElement("div"); echo.className = "ln cmd"; echo.textContent = prompt + v;
+        screen.replaceChild(echo, wrap);
+        activeInput = null; syncSend();
+        resolve(v);
+      });
+    });
+  }
+
+  async function askInt(id, prompt, lo, hi, allowEmpty) {
+    while (true) {
+      var raw = await ask(id, prompt);
+      if (raw === "" && allowEmpty) return null;
+      if (/^\d+$/.test(raw) && +raw >= lo && +raw <= hi) return +raw;
+      await line(id, "[err] enter a whole number from " + lo + " to " + hi + (allowEmpty ? " (or press ENTER)" : ""), "warn");
+    }
+  }
+
+  async function askNumber(id, prompt, truth) {
+    while (true) {
+      var raw = await ask(id, prompt);
+      if (raw === "?") { await line(id, "[reveal] " + truth, "warn"); return truth; }
+      if (/^\d+$/.test(raw) && +raw === truth) return truth;
+      await line(id, "[x] not the right value. recompute with the calculator, or type ? to reveal it.", "warn");
+    }
+  }
+
+  function finish(id, ok) {
+    guard(id);
+    verdict.textContent = ok ? "VERIFIED" : "DENIED";
+    verdict.className = "verdict " + (ok ? "ok" : "bad");
+    result.hidden = false;
+    againBtn.focus();
+  }
+
+  async function showCheck(id, lhs, rhs) {
+    var ok = lhs === rhs;
+    await line(id, "  g^b mod p      = " + lhs, "ok");
+    await line(id, "  V * X^c mod p  = " + rhs, "ok");
+    await line(id, ok ? "[match] both sides equal" : "[mismatch] the numbers do not agree", ok ? "hit" : "warn");
+    return ok;
+  }
+
+  async function runVerifier(id) {
+    var honest = rand(1, 10) <= 6;
+    await line(id, "$ connect --role verifier --peer prover.local", "cmd");
+    await line(id, "[ok] link established", "ok");
+    await line(id, "params       p = " + P + "   g = " + G, "dim");
+    await line(id, "public key   X = g^x mod p = " + X, "ok");
+    await line(id, "(you never see x. the prover claims to know it.)", "dim");
+    var r = rand(1, N - 1), V = modpow(G, r, P);
+    await line(id, "prover -> you:  V = " + V + "   (commitment)", "ok");
+    var c = await askInt(id, "your challenge c (1-" + (N - 1) + ", ENTER = random) > ", 1, N - 1, true);
+    if (c === null) c = rand(1, N - 1);
+    await line(id, "you -> prover:  c = " + c, "ok");
+    var used = honest ? SECRET : (function () { var s; do { s = rand(1, N - 1); } while (modpow(G, s, P) === X); return s; })();
+    var b = (r + c * used) % N;
+    await line(id, "prover -> you:  b = " + b + "   (response)", "ok");
+    await line(id, "your turn. verify by hand with the calculator:", "hit");
+    await line(id, "  left  = g^b mod p          (calc tab 1: a=" + G + "  e=b  m=" + P + ")", "dim");
+    await line(id, "  right = V * X^c mod p      (X^c first with tab 1, then tab 2 with a=0)", "dim");
+    var lhs = modpow(G, b, P), rhs = (modpow(X, c, P) * V) % P;
+    await askNumber(id, "left  = g^b mod p ? > ", lhs);
+    await askNumber(id, "right = V * X^c mod p ? > ", rhs);
+    var ok = await showCheck(id, lhs, rhs);
+    await line(id, "[log] the prover was an " + (honest ? "HONEST prover who knew x." : "IMPOSTOR who did not know x."), "dim");
+    if (!honest && ok) await line(id, "[warn] impostor slipped through: your c shares a factor with p-1 = 7672. Pick a c coprime to it.", "warn");
+    finish(id, ok);
+  }
+
+  async function runProver(id) {
+    await line(id, "$ connect --role prover --peer verifier.local", "cmd");
+    await line(id, "[ok] link established", "ok");
+    await line(id, "params       p = " + P + "   g = " + G, "dim");
+    await line(id, "public key   X = g^x mod p = " + X, "ok");
+    await line(id, "your secret  x = " + SECRET + "   (never send this)", "hit");
+    await line(id, "goal: convince the verifier you know x without revealing it.", "dim");
+    await line(id, "step 1  pick a random r. send V = g^r mod p.", "dim");
+    var r = await askInt(id, "pick r (1-" + (N - 1) + ", ENTER = random) > ", 1, N - 1, true);
+    if (r === null) r = rand(1, N - 1);
+    await line(id, "[secret] r = " + r + "   (keep it for step 2, never send it)", "warn");
+    await line(id, "compute V with the calculator (tab 1: a=" + G + "  e=" + r + "  m=" + P + "), then send it:", "dim");
+    var V = await askInt(id, "send V > ", 1, P - 1, false);
+    await line(id, "you -> verifier:  V = " + V, "ok");
+    var c = rand(1, N - 1);
+    await line(id, "verifier -> you:  c = " + c + "   (random challenge)", "ok");
+    await line(id, "step 2  compute b = (r + c*x) mod (p-1) and send it.", "dim");
+    await line(id, "calc tab 2:  a=" + r + "  b=" + c + "  c=" + SECRET + "  m=" + N + "   (mod p-1, not p)", "dim");
+    var b = await askInt(id, "send b > ", 0, Number.MAX_SAFE_INTEGER, false);
+    await line(id, "you -> verifier:  b = " + b, "ok");
+    await line(id, "verifier checks: g^b mod p  ==  V * X^c mod p", "dim");
+    var ok = await showCheck(id, modpow(G, b, P), (modpow(X, c, P) * V) % P);
+    if (!ok) await line(id, "[tip] check: same r in V and in b? b taken mod 7672? x = " + SECRET + "? V = g^r mod 7673?", "dim");
+    finish(id, ok);
+  }
+
+  function start(role) {
+    runId++; fast = false;
+    var id = runId;
+    screen.innerHTML = ""; result.hidden = true; activeInput = null; syncSend();
+    home.hidden = true; term.hidden = false;
+    roleName.textContent = "schnorr@zkp:~$ role=" + role;
+    (role === "verifier" ? runVerifier(id) : runProver(id)).catch(function (e) { if (e.message !== "aborted") console.error(e); });
+  }
+  function goHome() {
+    runId++; term.hidden = true; home.hidden = false; result.hidden = true; screen.innerHTML = ""; activeInput = null; syncSend();
+    document.getElementById("pickVerifier").focus();
+  }
+
+  document.getElementById("pickVerifier").addEventListener("click", function () { start("verifier"); });
+  document.getElementById("pickProver").addEventListener("click", function () { start("prover"); });
+  againBtn.addEventListener("click", goHome);
+  abortBtn.addEventListener("click", goHome);
+  screen.addEventListener("click", function (e) { if (e.target === screen || e.target.classList.contains("ln")) fast = true; });
+  document.addEventListener("keydown", function (e) { if (e.key === "Escape" && !term.hidden) goHome(); });
+
+  /* ---------- calculator (BigInt, exact) ---------- */
+  var tabExp = document.getElementById("tabExp"), tabLin = document.getElementById("tabLin");
+  var formExp = document.getElementById("formExp"), formLin = document.getElementById("formLin");
+  var outMain = document.getElementById("outMain"), outExpr = document.getElementById("outExpr");
+  var trace = document.getElementById("trace"), sendBtn = document.getElementById("sendBtn");
+  var lastResult = null, lastField = document.getElementById("ea");
+
+  function syncSend() { sendBtn.hidden = !(activeInput && lastResult !== null); }
+  function setTab(exp) {
+    tabExp.setAttribute("aria-selected", exp); tabLin.setAttribute("aria-selected", !exp);
+    formExp.hidden = !exp; formLin.hidden = exp;
+    lastField = document.getElementById(exp ? "ea" : "la");
+  }
+  tabExp.addEventListener("click", function () { setTab(true); });
+  tabLin.addEventListener("click", function () { setTab(false); });
+
+  [["p", P], ["p-1", N], ["g", G], ["X", X]].forEach(function (c) {
+    var b = document.createElement("button"); b.type = "button"; b.className = "chip";
+    b.textContent = c[0] + " = " + c[1]; b.title = "insert " + c[1] + " into the selected field";
+    b.addEventListener("click", function () { lastField.value = String(c[1]); lastField.focus(); });
+    document.getElementById("chips").appendChild(b);
+  });
+  document.querySelectorAll(".cform input").forEach(function (i) {
+    i.addEventListener("focus", function () { lastField = i; });
+  });
+
+  function big(id) {
+    var s = document.getElementById(id).value.trim();
+    if (!/^\d+$/.test(s)) throw new Error("enter whole non-negative numbers in every field");
+    return BigInt(s);
+  }
+  function show(res, expr, rows) {
+    outMain.className = "out-main"; outMain.textContent = String(res);
+    outExpr.textContent = expr; trace.textContent = rows || "";
+    lastResult = String(res); syncSend();
+  }
+  function fail(msg) { outMain.className = "out-main err"; outMain.textContent = msg; outExpr.textContent = ""; trace.textContent = ""; lastResult = null; syncSend(); }
+
+  formExp.addEventListener("submit", function (e) {
+    e.preventDefault();
+    try {
+      var a = big("ea"), ex = big("ee"), m = big("em");
+      if (m === 0n) throw new Error("modulus must be at least 1");
+      var r = 1n % m, base = a % m, bits = ex.toString(2), rows = [];
+      if (ex === 0n) rows.push("e = 0, so the result is 1 mod m");
+      else for (var i = 0; i < bits.length; i++) {
+        r = (r * r) % m; var step = "bit " + bits[i] + ": square -> " + r;
+        if (bits[i] === "1") { r = (r * base) % m; step += ", times a -> " + r; }
+        rows.push(step);
+      }
+      if (rows.length > 40) rows = rows.slice(0, 20).concat(["... (" + (rows.length - 40) + " rows hidden) ..."], rows.slice(-20));
+      show(r, a + "^" + ex + " mod " + m + " =", "square-and-multiply on the bits of e = " + bits + "\n" + rows.join("\n"));
+    } catch (err) { fail(err.message); }
+  });
+  formLin.addEventListener("submit", function (e) {
+    e.preventDefault();
+    try {
+      var a = big("la"), b = big("lb"), c = big("lc"), m = big("lm");
+      if (m === 0n) throw new Error("modulus must be at least 1");
+      var full = a + b * c;
+      show(full % m, "(" + a + " + " + b + " x " + c + ") mod " + m + " =", "a + b*c = " + full + "\n" + full + " mod " + m + " = " + (full % m));
+    } catch (err) { fail(err.message); }
+  });
+  sendBtn.addEventListener("click", function () {
+    if (activeInput && lastResult !== null) { activeInput.value = lastResult; activeInput.focus(); }
+  });
+})();
+</script>
+
+</body></html>
